@@ -1,0 +1,50 @@
+name: Deploy to EC2
+
+# Auto-deploys to your free-tier EC2 instance on every push to main.
+# Requires these repo secrets (Settings -> Secrets and variables -> Actions):
+#   EC2_HOST          public IP or DNS of the instance
+#   EC2_SSH_KEY       private key contents (the .pem file), PEM format
+#   EC2_USER          ssh user, e.g. "ubuntu"  (optional, defaults to ubuntu)
+#   OPENAI_API_KEY    your OpenAI key (written server-side to a chmod-600 .env,
+#                     never committed to the repo)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy project to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "."
+          target: "~/genai-risk-dashboard"
+          overwrite: true
+          rm: false
+          strip_components: 0
+
+      - name: Build and restart containers
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            if ! command -v docker >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y docker.io docker-compose-plugin
+              sudo usermod -aG docker $USER
+            fi
+            cd ~/genai-risk-dashboard
+            echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
+            chmod 600 .env
+            sudo docker compose up -d --build

@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CORS_ORIGINS=*
+      - RISK_WINDOW_SIZE=50
+      - DAILY_INVOKE_LIMIT=${DAILY_INVOKE_LIMIT:-60}
+      - DAILY_COPILOT_LIMIT=${DAILY_COPILOT_LIMIT:-60}
+    volumes:
+      - risk-data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  risk-data:
