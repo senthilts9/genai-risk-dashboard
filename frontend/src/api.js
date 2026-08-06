@@ -45,6 +45,7 @@ export const quantApi = {
   portfolio: (body) => post('/quant/portfolio', body),
   monteCarloVar: (body) => post('/quant/portfolio/monte-carlo-var', body),
   volatility: (body) => post('/quant/volatility', body),
+  mlVolatility: (body) => post('/quant/ml-volatility', body),
   blackScholes: (body) => post('/quant/option/black-scholes', body),
   binomial: (body) => post('/quant/option/binomial', body),
   monteCarloOption: (body) => post('/quant/option/monte-carlo', body),
@@ -68,4 +69,21 @@ export async function recordVisit(visitorId) {
 export async function getVisitStats() {
   const res = await fetch(`${BASE}/analytics/stats`)
   return handle(res)
+}
+
+// ---------------- Mock Market Data (fund/security browser, not live/prod) ----------------
+
+export const marketApi = {
+  securities: async () => handle(await fetch(`${BASE}/market/securities`)),
+  quotes: async (tickers) => handle(await fetch(`${BASE}/market/quotes?tickers=${encodeURIComponent(tickers.join(','))}`)),
+  portfolios: async () => handle(await fetch(`${BASE}/market/portfolios`)),
+  holdings: async (portfolioId) => handle(await fetch(`${BASE}/market/portfolios/${encodeURIComponent(portfolioId)}/holdings`)),
+  tickSimulation: async (nTicks = 1000000, barSeconds = 60) =>
+    handle(await fetch(`${BASE}/market/tick-simulation?n_ticks=${nTicks}&bar_seconds=${barSeconds}`, { method: 'POST' })),
+  tickSimulationCpp: async (nTicks = 1000000, barSeconds = 60) =>
+    handle(await fetch(`${BASE}/market/tick-simulation-cpp?n_ticks=${nTicks}&bar_seconds=${barSeconds}`, { method: 'POST' })),
+  cppEngineStatus: async () => handle(await fetch(`${BASE}/market/cpp-engine-status`)),
+  tickSimulationKdb: async (nTicks = 1000000, barSeconds = 60) =>
+    handle(await fetch(`${BASE}/market/tick-simulation-kdb?n_ticks=${nTicks}&bar_seconds=${barSeconds}`, { method: 'POST' })),
+  kdbEngineStatus: async () => handle(await fetch(`${BASE}/market/kdb-engine-status`)),
 }

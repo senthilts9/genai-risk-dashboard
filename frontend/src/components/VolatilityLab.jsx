@@ -10,17 +10,25 @@ export default function VolatilityLab() {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [isMock, setIsMock] = useState(false)
+  const [mlResult, setMlResult] = useState(null)
+  const [mlError, setMlError] = useState(null)
 
   async function run() {
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setMlResult(null); setMlError(null)
     try {
       const tickers = tickerStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
       const weightVals = weightStr.split(',').map(s => parseFloat(s.trim()))
       const weights = {}
       tickers.forEach((t, i) => { weights[t] = weightVals[i] ?? 0 })
-      const res = await quantApi.volatility({ tickers, weights, benchmark: 'SPY', period })
+      const req = { tickers, weights, benchmark: 'SPY', period }
+      const [res, mlRes] = await Promise.all([
+        quantApi.volatility(req),
+        quantApi.mlVolatility(req).catch(e => ({ error: e.message })),
+      ])
       setResult(res.result)
       setIsMock(res.is_mock_data)
+      if (mlRes.error) setMlError(mlRes.error)
+      else setMlResult(mlRes.result)
     } catch (e) { setError(e.message) } finally { setLoading(false) }
   }
 
@@ -67,6 +75,54 @@ export default function VolatilityLab() {
             <div className="stat"><div className="label">GARCH α</div><div className="value">{result.garch.alpha}</div></div>
             <div className="stat"><div className="label">GARCH β</div><div className="value">{result.garch.beta}</div></div>
             <div className="stat"><div className="label">Persistence (α+β)</div><div className="value">{result.garch.persistence}</div></div>
+          </div>
+
+          <div className="panel" style={{ marginTop: 14 }}>
+            <p className="section-title">ML Volatility Forecast — GradientBoostingRegressor, trained live on this exact data</p>
+            {mlError && <div style={{ color: 'var(--warn)', fontSize: 12.5 }}>{mlError}</div>}
+            {mlResult && (
+              <>
+                <div className="stat-strip">
+                  <div className="stat">
+                    <div className="label">Live Forecast (5d fwd, ann.)</div>
+                    <div className="value">{(mlResult.live_forecast_annualized_vol * 100).toFixed(2)}%</div>
+                  </div>
+                  <div className="stat">
+                    <div className="label">Test R² (n={mlResult.test_rows})</div>
+                    <div className="value" style={{ color: mlResult.test_r2 > 0 ? 'var(--safe)' : 'var(--warn)' }}>{mlResult.test_r2}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="label">RMSE vs Naive Baseline</div>
+                    <div className="value" style={{ color: mlResult.beats_naive_baseline ? 'var(--safe)' : 'var(--crit)' }}>
+                      {mlResult.test_rmse} vs {mlResult.naive_baseline_rmse}
+                    </div>
+                  </div>
+                  <div className="stat">
+                    <div className="label">Improvement vs Naive</div>
+                    <div className="value" style={{ color: mlResult.improvement_vs_naive_pct >= 0 ? 'var(--safe)' : 'var(--crit)' }}>
+                      {mlResult.improvement_vs_naive_pct >= 0 ? '+' : ''}{mlResult.improvement_vs_naive_pct}%
+                    </div>
+                  </div>
+                </div>
+                {mlResult.test_r2 < 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                    Note: negative R² here means the model underperforms simply predicting the mean on this window —
+                    common on short/simulated series with limited real volatility clustering. Shown honestly rather
+                    than hidden; check the RMSE-vs-naive comparison alongside R² for the fuller picture.
+                  </div>
+                )}
+                <p className="section-title" style={{ marginTop: 14 }}>Feature importances</p>
+                {Object.entries(mlResult.feature_importances).map(([feat, imp]) => (
+                  <div key={feat} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <span style={{ width: 90, fontSize: 11.5, fontFamily: 'var(--font-data)', color: 'var(--muted)' }}>{feat}</span>
+                    <div style={{ flex: 1, background: '#0E141B', borderRadius: 3, height: 8 }}>
+                      <div style={{ width: `${imp * 100 * 3}%`, maxWidth: '100%', height: '100%', background: 'var(--safe)', borderRadius: 3 }} />
+                    </div>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-data)', width: 40 }}>{(imp * 100).toFixed(1)}%</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </>
       )}

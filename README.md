@@ -96,6 +96,40 @@ sanity tests.
   `localStorage` is fine here) and every load pings `/api/analytics/visit`,
   which is tallied in the same SQLite DB and read back via
   `/api/analytics/stats`.
+- **Market Watch tab** — a mock fund/security browser styled like a real
+  investment-management data feed: sample portfolios (Global Equity Growth,
+  Balanced Multi-Asset, Core Fixed Income, International Diversified) with
+  proper ISIN/CUSIP-coded holdings blotters and live-ticking mock quotes
+  (`backend/app/mock_market.py`). Explicitly **not** a live/production market
+  data connection — every response is tagged `is_mock: true` and the UI
+  carries a permanent "MOCK DATA — NOT LIVE / NOT PRODUCTION" badge. One
+  click loads any fund's holdings straight into the Portfolio Risk tab.
+- **ML volatility forecasting** (Volatility Models tab) — a
+  `GradientBoostingRegressor` trained live, on-demand, on whatever portfolio
+  you just ran (no stale pre-trained model file) to forecast 5-day-forward
+  realized volatility from lagged returns, rolling vol/skew/kurtosis, and
+  EWMA vol as features. Reports test R² and RMSE **against a naive baseline**
+  (yesterday's realized vol as today's forecast) rather than in isolation --
+  including honestly flagging when the model doesn't beat the baseline,
+  which happens routinely on short or low-structure series and is more
+  useful information than a hidden or cherry-picked metric.
+- **C++ tick engine** (`backend/cpp/tick_engine.cpp`) — the same tick
+  generation + OHLCV aggregation as the Python pipeline, in a compiled
+  pybind11 extension. Actually compiled and benchmarked during development:
+  ~3.3M ticks/sec with portable `-O3` flags (safe across different deploy
+  CPUs), ~8.4M ticks/sec with `-march=native`. Falls back to the Python/
+  DuckDB pipeline automatically if the extension isn't built.
+- **KDB-X tick store** (`backend/kdb/schema.q`, `backend/app/kdb_tick_engine.py`)
+  — the same ticks bulk-inserted into a kdb+ table and aggregated via q's
+  idiomatic `xbar` time-bucketing. **Honest caveat, unlike everything else
+  in this list**: this was written against KDB-X's current documented
+  Python API but has not been executed end-to-end in this project's
+  development environment -- doing so requires a free personal KDB-X
+  license via an interactive signup at kx.com that can't be automated or
+  provisioned on someone else's behalf. Verify it against your own install
+  (`pip install pykx`, get a license, uncomment the line in
+  `requirements.txt`) before trusting its numbers; until then it runs the
+  same Python fallback as the C++ panel.
 
 ## Running locally
 
@@ -144,6 +178,15 @@ npm run dev
 | POST | `/api/copilot` | Ask the risk copilot a question (context-aware) |
 | POST | `/api/analytics/visit` | Record a page visit |
 | GET | `/api/analytics/stats` | Total visits + unique visitors |
+| POST | `/api/quant/ml-volatility` | ML (GradientBoosting) volatility forecast, trained live |
+| GET | `/api/market/securities` | Mock security master (ISIN/CUSIP/ticker) |
+| GET | `/api/market/quotes?tickers=` | Mock live-ticking quotes |
+| GET | `/api/market/portfolios` | List of sample fund portfolios |
+| GET | `/api/market/portfolios/{id}/holdings` | Full holdings blotter for a fund |
+| POST | `/api/market/tick-simulation-cpp` | C++ (pybind11) tick benchmark -- compiled & verified |
+| GET | `/api/market/cpp-engine-status` | Whether the C++ extension is built |
+| POST | `/api/market/tick-simulation-kdb` | KDB-X tick benchmark -- unverified, see caveat above |
+| GET | `/api/market/kdb-engine-status` | Whether pykx is installed/licensed |
 
 ## Pushing this to GitHub
 

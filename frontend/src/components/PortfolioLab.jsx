@@ -14,7 +14,7 @@ function Stat({ label, value, tone }) {
 const fmtPct = (v) => (v === null || v === undefined) ? '—' : `${(v * 100).toFixed(2)}%`
 const fmtNum = (v) => (v === null || v === undefined) ? '—' : v.toFixed(3)
 
-export default function PortfolioLab({ onMetricsComputed }) {
+export default function PortfolioLab({ onMetricsComputed, loadedHoldings }) {
   const [tickers, setTickers] = useState([
     { symbol: 'AAPL', weight: 30 }, { symbol: 'MSFT', weight: 25 },
     { symbol: 'SPY', weight: 25 }, { symbol: 'TLT', weight: 20 },
@@ -33,6 +33,14 @@ export default function PortfolioLab({ onMetricsComputed }) {
   const [saveName, setSaveName] = useState('')
 
   useEffect(() => { refreshSaved() }, [])
+
+  useEffect(() => {
+    if (loadedHoldings && loadedHoldings.length > 0) {
+      setTickers(loadedHoldings)
+      setMetrics(null)
+      setContributions([])
+    }
+  }, [loadedHoldings])
 
   async function refreshSaved() {
     try {

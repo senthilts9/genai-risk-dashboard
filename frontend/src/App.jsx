@@ -9,12 +9,14 @@ import DerivativesLab from './components/DerivativesLab.jsx'
 import BondLab from './components/BondLab.jsx'
 import ModelLibrary from './components/ModelLibrary.jsx'
 import RiskCopilot from './components/RiskCopilot.jsx'
+import MarketWatch from './components/MarketWatch.jsx'
 import { getHistory, recordVisit, getVisitStats } from './api'
 
 const SESSION_ID = 'default'
 
 const TABS = [
   { key: 'genai', label: 'GenAI App Risk' },
+  { key: 'market', label: 'Market Watch' },
   { key: 'portfolio', label: 'Portfolio Risk' },
   { key: 'volatility', label: 'Volatility Models' },
   { key: 'derivatives', label: 'Derivatives' },
@@ -99,6 +101,12 @@ export default function App() {
   const [tab, setTab] = useState('genai')
   const [dashboardContext, setDashboardContext] = useState(null)
   const [visitStats, setVisitStats] = useState(null)
+  const [loadedHoldings, setLoadedHoldings] = useState(null)
+
+  function handleLoadIntoPortfolio(holdings) {
+    setLoadedHoldings(holdings)
+    setTab('portfolio')
+  }
 
   useEffect(() => {
     let visitorId = localStorage.getItem('meridian_visitor_id')
@@ -138,7 +146,8 @@ export default function App() {
       </div>
 
       {tab === 'genai' && <GenAIRiskView />}
-      {tab === 'portfolio' && <PortfolioLab onMetricsComputed={setDashboardContext} />}
+      {tab === 'market' && <MarketWatch onLoadIntoPortfolio={handleLoadIntoPortfolio} />}
+      {tab === 'portfolio' && <PortfolioLab onMetricsComputed={setDashboardContext} loadedHoldings={loadedHoldings} />}
       {tab === 'volatility' && <VolatilityLab />}
       {tab === 'derivatives' && <DerivativesLab />}
       {tab === 'bond' && <BondLab />}

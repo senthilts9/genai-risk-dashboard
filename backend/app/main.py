@@ -16,7 +16,7 @@ from .models import (InvokeRequest, InvokeResponse, HistoryResponse, InvocationR
                       PortfolioRequest, MonteCarloVarRequest, OptionRequest,
                       BinomialRequest, MonteCarloOptionRequest, BondRequest,
                       SavePortfolioRequest, CopilotRequest, VisitRequest)
-from . import storage, llm_client, quant_risk, market_quant
+from . import storage, llm_client, quant_risk, market_quant, mock_market, ml_volatility, tick_simulator, cpp_tick_engine, kdb_tick_engine
 
 app = FastAPI(title="GenAI Application Risk Dashboard", version="1.0.0")
 
@@ -200,6 +200,14 @@ def quant_volatility(req: PortfolioRequest):
     return {"result": result, "is_mock_data": is_mock}
 
 
+@app.post("/api/quant/ml-volatility")
+def quant_ml_volatility(req: PortfolioRequest):
+    prices, is_mock = _load_prices(req)
+    port_ret = market_quant.portfolio_returns(prices[req.tickers], req.weights)
+    result = ml_volatility.train_and_forecast(port_ret)
+    return {"result": result, "is_mock_data": is_mock}
+
+
 @app.post("/api/quant/option/black-scholes")
 def quant_black_scholes(req: OptionRequest):
     return market_quant.black_scholes(
@@ -232,3 +240,79 @@ def quant_bond(req: BondRequest):
         face_value=req.face_value, coupon_rate=req.coupon_rate, ytm=req.ytm,
         years_to_maturity=req.years_to_maturity, freq=req.freq,
     )
+
+
+# ============================================================
+# Mock market data -- fund/security browser (explicitly NOT live/production)
+# ============================================================
+
+@app.get("/api/market/securities")
+def market_securities():
+    return {"securities": mock_market.list_securities(), "is_mock": True}
+
+
+@app.get("/api/market/quotes")
+def market_quotes(tickers: str):
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    return {"quotes": mock_market.get_quotes(ticker_list), "is_mock": True}
+
+
+@app.get("/api/market/portfolios")
+def market_portfolios():
+    return {"portfolios": mock_market.list_portfolios(), "is_mock": True}
+
+
+@app.get("/api/market/portfolios/{portfolio_id}/holdings")
+def market_portfolio_holdings(portfolio_id: str):
+    result = mock_market.get_portfolio_holdings(portfolio_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"No mock portfolio '{portfolio_id}'.")
+    return result
+
+
+@app.post("/api/market/tick-simulation")
+def market_tick_simulation(n_ticks: int = 1_000_000, bar_seconds: int = 60):
+    if n_ticks > 5_000_000:
+        raise HTTPException(status_code=422, detail="Capped at 5,000,000 ticks per request on this demo instance.")
+    securities = mock_market.SECURITIES
+    tickers = list(securities.keys())
+    base_prices = {t: s["base_price"] for t, s in securities.items()}
+
+    gen = tick_simulator.generate_ticks(tickers, base_prices, n_ticks=n_ticks)
+    agg = tick_simulator.aggregate_to_bars(gen["df"], bar_seconds=bar_seconds)
+
+    sample_bars = agg["bars"].head(20).to_dict(orient="records")
+    return {
+        "n_ticks": gen["n_ticks"],
+        "generation_seconds": gen["generation_seconds"],
+        "n_bars": agg["n_bars"],
+        "aggregation_seconds": agg["aggregation_seconds"],
+        "aggregation_engine": agg["engine"],
+        "bar_seconds": bar_seconds,
+        "sample_bars": sample_bars,
+        "is_mock": True,
+    }
+
+
+@app.post("/api/market/tick-simulation-cpp")
+def market_tick_simulation_cpp(n_ticks: int = 1_000_000, bar_seconds: int = 60):
+    if n_ticks > 10_000_000:
+        raise HTTPException(status_code=422, detail="Capped at 10,000,000 ticks per request on this demo instance.")
+    return cpp_tick_engine.run_cpp_simulation(n_ticks=n_ticks, bar_seconds=bar_seconds)
+
+
+@app.get("/api/market/cpp-engine-status")
+def cpp_engine_status():
+    return {"cpp_extension_available": cpp_tick_engine.CPP_AVAILABLE}
+
+
+@app.post("/api/market/tick-simulation-kdb")
+def market_tick_simulation_kdb(n_ticks: int = 1_000_000, bar_seconds: int = 60):
+    if n_ticks > 10_000_000:
+        raise HTTPException(status_code=422, detail="Capped at 10,000,000 ticks per request on this demo instance.")
+    return kdb_tick_engine.run_kdb_simulation(n_ticks=n_ticks, bar_seconds=bar_seconds)
+
+
+@app.get("/api/market/kdb-engine-status")
+def kdb_engine_status():
+    return {"kdb_available": kdb_tick_engine.KDB_AVAILABLE, "verified_by_execution_in_this_build": False}
